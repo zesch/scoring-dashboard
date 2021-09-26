@@ -8,9 +8,11 @@ from ml import cross_validate
 # set page dimension, title and icon
 st.set_page_config("Scoring Dashboard", None, "wide", "auto")
 
+# hier ist mir nicht ganz klar, wie die Aufteilung gedacht war
 body, stats = st.columns([4, 1])
 #body, stats = st.columns((4, 1))
 
+# Aufteilung des Codes in Container-Bereiche entsprechend den (inhaltlichen) Teilbereichen
 load_data = st.container()
 data_stats = st.container()
 machine_learning = st.container()
@@ -40,8 +42,9 @@ if uploaded_file:
         for col in df.columns:
             first_row.append(col)
 
-        # attention: outcommenting multiple lines is shown in the app !
-        # some pre-code for auto-detecting columns content
+        # attention: lines that are outcommented in multiple lines will be shown as code in the app !
+
+        # some pre-code for the auto-detection of column-content
            
 #        for elem in first_row:
 #            try:
@@ -57,9 +60,10 @@ if uploaded_file:
 #            finally:
 #                st.write()    
 
-        # ggf noch Denkfehler drin, soll für jede Spalte von Columns und der ersten Datenspalte prüfen,
-        # ob der gleiche Datentyp enthalten ist (= Columns enthält evtl Daten) oder nicht (= enthält Header)
-        hasNoHeader = []
+        # ggf noch Denkfehler drin, soll für jedes Paar der Spalten von Columns und der ersten Datenspalte prüfen,
+        # ob bei den gleichen Datentyp enthalten ()= Columns enthält evtl. Daten) oder nicht (= enthält Header)
+ 
+        hasNoHeader = [] # implementiert über list of booleans und anschließende Ver-Undung
         for col in df.columns:
             #st.write(type(col))
             #st.write(type(df[col][0]))
@@ -91,11 +95,12 @@ if uploaded_file:
                 #st.write(hasNoHeader)
         # hasNoHeader enthält die Progrose, ob die erste Zeile der csv Datei Daten enthält oder nicht
         if len(hasNoHeader) >= 1:
-            hasNoHeader = all(hasNoHeader)
+            hasNoHeader = all(hasNoHeader) # verunden aller Booleans
         else: 
             hasNoHeader = False
         #st.write(hasNoHeader)  
 
+        # Text (Vor-) Verarbeitung, alles in lower case setzen
         for elem in first_row:
             if type(elem) == str:
                elem.lower()
@@ -107,6 +112,7 @@ if uploaded_file:
 
         option = st.radio("First row contains :", ["Header", "Data"])
 
+        # check if content is convertible to int
         def tryInt(item):
             try:
                 item = int(item)
@@ -114,6 +120,10 @@ if uploaded_file:
             except ValueError:
                 return item
 
+        # add first line of file (now as header in columns) back as first line of data to dataframe
+        # currently implemented for int data type
+        # TODO implement also for float data type
+        # ..other data types necessary?
         if option == "Data" and hasNoHeader:
             header = range(n_columns)
             data_to_add = {}
@@ -135,12 +145,13 @@ if uploaded_file:
             df = df.sort_index()
 
             st.write(df.head())
-        
+
+        # catch case when first line data types are not compatible to data frame data types (saved in hasNoHeader)    
         elif option == "Data" and not hasNoHeader:
             st.write("There are type mismatches between the first row and the second row of your data. Please check your file for inconsistencies. ")
 
-        # while not selected text + label, stop!
-        # check ob jeweils unterschiedliche Columns gewählt wurden..
+        # do not proceed computing while text + label have not been selected!
+        # TODO check ob jeweils mind. 2 unterschiedliche Columns gewählt wurden..(data, label; id optional)
         st.subheader("Confirm - if applicable - the preselections or select the corresponding columns: ")
         
         with st.form('Chose Columns'):
@@ -199,9 +210,9 @@ if uploaded_file:
             button1 = st.button("Continue")
 
 # ab hier bei Zugriffen auf ID - prüfen, ob ID in df gesetzt ist!
-# df ab hier umbenannt zu ndf (Columnen-Auswahl)
+# df ab hier umbenannt zu ndf (dataframe mit der Columnen-Auswahl, falls data hochgeladen wird, die mehr als nur die 2-3 Spalten enthält)
 
-# ----------------------------------------Data Analysis -----------------------------------------------
+# ----------------------------------------Data Analysis Part-----------------------------------------------
 
 if ndf is not None and button1:
     with data_stats:
@@ -231,14 +242,14 @@ if ndf is not None and button1:
             num_labels = False
         st.bar_chart(label_freq,width=110*len(labels), use_container_width=num_labels)
         
-        #@TODO Warning if imbalanced
-        #110*len(labels), if else Knackpunkt 9 Daten-Kolumnen
-        #@TODO Container, und Container hier in 2 Columns splitten und dann den Plot am Container ausrichten
+        # TODO Warning if imbalanced
+        # Darstellung der Label Verteilung: Bar Chart mit 110pixel*len(labels), Knackpunkt: 9 Daten-Kolumnen
+        # TODO ggf. Container nutzen, und Container hier in 2 Columns splitten und dann den Plot am Container ausrichten
         # 
         #st.write(label_counts.min())
         #st.write(label_counts.max())
 
-        #Ratio
+        # Ratio
         label_dist = label_counts.min()/label_counts.max()
         if label_dist >= 0.9:
             st.success("The labels are evenly distributed.")
@@ -249,11 +260,11 @@ if ndf is not None and button1:
         else:
             st.error("Warning: The labels' distribution is skewed! This will most likely have a negative impact on your results!!")
         # Ausgabe mit Text-Hinterlegung UND Text, Barriere-Freiheit(?)
-        # Headings, Barriere-Freiheit, Screen-Reader
+        # >> Headings, Barriere-Freiheit, Screen-Reader
 
         # Average Length mit Plot
         st.subheader("Average length data")
-        # bug in streamlit DataFrame Anzeigebreite issue#371
+        # Achtung: bug in streamlit DataFrame Anzeigebreite issue#371
         c1, c2 = st.columns((1,2))
         av_df = pd.DataFrame()
         st.write("\n")
@@ -261,7 +272,7 @@ if ndf is not None and button1:
             st.write("Data")
             st.dataframe(ndf['text'])
         # average no tokens
-        #av_df['test###///'] = ndf['text'].apply(lambda x: "Hallo."+ str(x))    # debug Test
+        #av_df['test'] = ndf['text'].apply(lambda x: "Hallo."+ str(x))    # debug Test
         av_df['#chars/entry'] = ndf['text'].apply(lambda x: len(''.join(str(x).split())))
         av_df['#words/entry'] = ndf['text'].apply(lambda x: len(str(x).split()))
         #av_df['#sentences/entry'] = df['text'].apply(lambda x: len(str(x).split('.')))
@@ -269,8 +280,10 @@ if ndf is not None and button1:
         av_df['#words/sentence'] = ndf['text'].apply(lambda x: len(str(x).split())/len(str(x).split('.')))
         av_df['label'] = ndf['label']
         #av_df['#chars/word'] = df['text'].apply(lambda x: len(''.join(str(x).split()))/len(str(x).split()))
+        
         # vocabulary = set(text.split())
-        #@TODO text in die Tabelle hinzu, scrollbar seitlich?
+        
+        #@TODO text in die Tabelle hinzu, scrollbar seitlich? done: gelöst als 2 df nebeneinander
         #@TODO means + plot
         with c2:
             st.write("Average stats: counts + lengths")
