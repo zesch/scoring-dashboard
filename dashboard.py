@@ -5,7 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import base64
 from ml import cross_validate, cross_val_dtree, cross_val_reg, cross_val_mat_SVM, cross_val_test
-from most_common_ngrams import most_freq_n_grams, most_freq_ngrams_CountVec
+from most_common_ngrams import most_freq_ngrams_CountVec
 
 import nltk
 from nltk.corpus import stopwords
@@ -43,15 +43,44 @@ uploaded_file = body.file_uploader("Upload dataset (csv format)")
 df = None
 ndf = None
 if uploaded_file:
-    df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8") # add encoding?
+    #df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8") # add encoding?
+    df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8", header=None)
     n_columns = len(df.columns)
+
+    hasNoHeader = [] # implementiert über list of booleans und anschließende Ver-Undung
+    for i in range (len(df.iloc[0])):
+        #st.write(df.iloc[0][i])
+        #st.write(df.iloc[1][i])
+        try:
+            header_item = int(df.iloc[0][i])
+            data_item = int(df.iloc[1][i])
+            if type(header_item) == type(data_item):
+                hasNoHeader.append(True)
+            else:
+                hasNoHeader.append(False)
+
+        except ValueError:
+            try:
+                header_item = float(df.iloc[0][i])
+                data_item = float(df.iloc[1][i])
+                if type(header_item) == type(data_item):
+                   hasNoHeader.append(True)
+                else:
+                    hasNoHeader.append(False)
+
+            except ValueError:
+                str(df.iloc[0][i])
     
 #---------------------------------------Sidebar------------------------------------------------
     st.sidebar.header('Configuration')
 
     with st.sidebar.expander("Data Upload", expanded=True):
         st.markdown("#### Assign the content of the first row of your data")
-        option01 = st.radio("First row contains :", ["Header", "Data"])
+        if hasNoHeader:
+            set_option01 = 1
+        else:
+            set_option01 = 0
+        option01 = st.radio("First row contains :", ["Header", "Data"], index = set_option01)
 
         st.markdown("#### Confirm the preselections \n **or** select the corresponding columns: ")
         
@@ -108,32 +137,8 @@ if uploaded_file:
 
         # ggf noch Denkfehler drin, soll für jedes Paar der Spalten von Columns und der ersten Datenspalte prüfen,
         # ob bei den gleichen Datentyp enthalten ()= Columns enthält evtl. Daten) oder nicht (= enthält Header)
- 
-        hasNoHeader = [] # implementiert über list of booleans und anschließende Ver-Undung
-        for col in df.columns:
-            #st.write(type(col))
-            #st.write(type(df[col][0]))
-            try:
-                header_item = int(col)
-                data_item = int(df[col][0])
-                if type(header_item) == type(data_item):
-                    hasNoHeader.append(True)
-                else:
-                    hasNoHeader.append(False)
 
-            except ValueError:
-                try:
-                    header_item = float(col)
-                    data_item = float(df[col][0])
-                    if type(header_item) == type(data_item):
-                        hasNoHeader.append(True)
-                    else:
-                        hasNoHeader.append(False)
-
-                except ValueError:
-                    str(df[col][0])
-
-        # hasNoHeader enthält die Progrose, ob die erste Zeile der csv Datei Daten enthält oder nicht
+        # hasNoHeader enthält die Prognose, ob die erste Zeile der csv Datei Daten enthält oder nicht
         if len(hasNoHeader) >= 1:
             hasNoHeader = all(hasNoHeader)
         else: 
@@ -169,39 +174,25 @@ if uploaded_file:
         # currently implemented for int data type
         # TODO implement also for float data type - done
         # ..other data types necessary?
-        if option01 == "Data" and hasNoHeader:
-            header = range(n_columns)
-            data_to_add = {}
-            new_columns = {}
-            for i in header:
-                converted_a = tryInt(df.columns[i])
-                converted_b = tryFloat(converted_a)
-                data_to_add.__setitem__(str(i),converted_b)
-            
-            new_frame = pd.DataFrame(columns=header)
-            new_frame.loc[len(new_frame.index)] = df.columns
-            
-            for i in range(n_columns):
-                new_columns.__setitem__(df.columns[i],str(i))
+        if option01 == "Header" and not hasNoHeader:
 
-            df.rename(columns = new_columns, inplace=True)
+            headers = df.iloc[0]
+            df = df.drop(index=[0])
+            df.columns=headers
 
-            df.loc[-1] = data_to_add
-            df.index = df.index + 1
-            df = df.sort_index()
-
+            df.index = df.index - 1
             st.write(df.head())
 
         # catch case when first line data types are not compatible to DataFrame data types (saved in hasNoHeader)    
+        elif option01 == "Header" and hasNoHeader:
+            st.error("The type of the first row and the second row of your data match. Therefore we assume the first row also contains data. Please check your file for assertion. ")
         elif option01 == "Data" and not hasNoHeader:
             st.error("There are type mismatches between the first row and the second row of your data. Therefore we assume the presence of a header. Please check your file for inconsistencies. ")
-
+            df = df.drop(index=[0])
+            # alternativ alles stoppen
+            # st.stop()
         # do not proceed computing while text + label have not been selected yet!
         # TODO check if two distinct(!) columns have been selected at least..(data, label; id optional)
-
-        # Submitted button for column choice
-        if submitted01:
-            st.write(col_id, col_text, col_label)
         
         if col_id is not None and col_text is not None and col_label is not None:
             col_id = int(col_id)
@@ -212,6 +203,7 @@ if uploaded_file:
             new_df["text"] = df[df.columns[col_text]]
             new_df["label"] = df[df.columns[col_label]]
             ndf = new_df
+            zero_values = ndf[ndf['id'].isna()|ndf['text'].isna()|ndf['label'].isna()]
 
         elif col_text is not None and col_label is not None:
             col_text = int(col_text)
@@ -220,6 +212,7 @@ if uploaded_file:
             new_df["text"] = df[df.columns[col_text]]
             new_df["label"] = df[df.columns[col_label]]
             ndf = new_df
+            zero_values = ndf[ndf['text'].isna()|ndf['label'].isna()]
         else:
             st.error("You have not yet selected the mandatory columns text and/or label.")
 
@@ -232,9 +225,10 @@ if uploaded_file:
 # ----------------------------------------Data Analysis Part-----------------------------------------------
 
 if ndf is not None:
+    
+    #TODO catch missing id - case id yes/no
 
-    zero_values = ndf[ndf['id'].isna()|ndf['text'].isna()|ndf['label'].isna()]
-    ndf = ndf.dropna(subset=['text'])
+    ndf = ndf.dropna(subset=['text']).reset_index()
 
     with data_stats:
         st.markdown('## **Dataset Statistics**')
@@ -258,13 +252,20 @@ if ndf is not None:
             st.success("Data amount is sufficient.")
             
         #@TODO Warning if too low
-            labels = set(ndf["label"])
-            
+        #TODO connect with label type selection, auto-select or user select priority?
+        labels = list(set(ndf["label"]))
+        #TODO Abbruch-Bedingung mit RegEx für String?
+        for i in range(len(labels)):
+            labels[i] = tryInt(labels[i])
+            labels[i] = tryFloat(labels[i])
+        if type(labels[0]) == int or type(labels[0])==float:
+            labels.sort()
+  
         with c01:    
             st.metric(label = "Number of labels: ", value=len(labels))
         with c02:
             show_labels = str(labels)
-            st.metric("Labels: ", show_labels )
+            st.metric("Labels: ", show_labels)
         
         label_counts = ndf["label"].value_counts()
         label_freq = ndf["label"].value_counts(normalize=True)
@@ -277,7 +278,7 @@ if ndf is not None:
         st.bar_chart(label_freq,width=110*len(labels), use_container_width=num_labels)
         st.info("*Hover over bars to see exact values")
 
-    
+
         #fig3 = sns.catplot(x='label', kind='count',height=5, aspect=3, data=ndf)#,points='all')
         #st.pyplot(fig3)
         
@@ -322,13 +323,9 @@ if ndf is not None:
             
             # vocabulary = set(text.split())
             
-            #@TODO text in die Tabelle hinzu, scrollbar seitlich? done: gelöst als 2 df nebeneinander
-            #@TODO means + plot
             with c2:
                 st.write("Average stats: counts + lengths")
                 st.write(av_df)
-
-        #TODO automated plotting for x labels..
 
         st.markdown('### Plot Test SNS displot')
         with st.expander(label="Show/Hide Distribution plots",expanded=True):
@@ -383,8 +380,7 @@ if ndf is not None:
                                 yaxis_title="Counts")
             st.plotly_chart(fig0c)
         st.info("*hover over plot to see more detailed stats")
-        
-        #TODO check out plotly distplot self build...
+
     
         st.subheader("Average values on whole data set selection")
         df_mean = av_df.mean()
@@ -421,9 +417,10 @@ if ndf is not None:
         #some_data = most_freq_n_grams(ndf, labels, N)
         #st.write(some_data)
         ### Function based on ContVectorizer algorithm
-        # last two parameters: start/stop of n-gram range fpr CountVectorizer
+        # last two parameters: start/stop of n-gram range for CountVectorizer
         n_gram_start = 1
         n_gram_stop = 3
+
         some_more_data = most_freq_ngrams_CountVec(ndf, labels, N, n_gram_start, n_gram_stop)
 
         # Type-Token Ratio
@@ -460,7 +457,7 @@ if ndf is not None:
         ['German','English'])
 
     # Numerical Data?
-    labels = st.sidebar.radio(
+    label_type = st.sidebar.radio(
         "Label type?",
         ('Categorical', 'Numeric - discrete', 'Numeric continuous'))
         # categorical: String, dicrete: int, continuous: float
@@ -468,12 +465,15 @@ if ndf is not None:
     #Algorithm?
     algorithm = st.sidebar.radio(
         "Algorithm?",
-        ('SVM', 'Regression', 'Decision Tree'))
-    
+        ('SVM', 'Regression', 'Decision Tree', 'Random Forest'))
 
     # ML -------------------------------------------------------------------------------------
     st.markdown('# Machine Learning Stats')
-    st.markdown('## Classifier Performance Preview')
+    c1, c2 = st.columns((0.8,1))
+    with c1:
+        st.markdown('## Classifier Performance Preview')
+    with c2:
+        st.info("*hover over graphs for more details")
 
     #stops_en = set(stopwords.words('english'))
     #stops_de = set(stopwords.words('german'))
@@ -490,22 +490,20 @@ if ndf is not None:
 
     # cv value fest an Funktion übergeben oder als variablen Input vom User?
     
-    overview_res = cross_val_test(ndf, 10) # 
-    ## moved following lines to function, so it returns a data frame
-    #overview_scores = pd.DataFrame()
-    #for key in overview_res.keys():
-    #    overview_scores[str(key)+ " score"] = overview_res[key]
+    overview_res = cross_val_test(ndf, 10)
     overview_res_ = overview_res.reset_index().rename(columns={'index': 'fold', 'score': 'score'})
     overview_res_['fold']=overview_res_['fold'].values + 1
-    overview_stats = [] # columns require multiple iterations, calculate only once
+    overview_stats = []
+    
     for elem in overview_res.columns:
         overview_stats.append((str(elem[:len(elem)-6]),(round(overview_res_[elem].mean(),4)),(round(overview_res_[elem].std(),4))))
     
     c_name, c_score, c_std, c_plot = st.columns((0.7,0.7,0.7,3))
     with c_name:
         max_score = overview_stats[0][1]
+        
         # also for std? max std and trends?
-        for (name, mean,std) in overview_stats:
+        for (name, mean, std) in overview_stats:
             st.write(" ")
             st.write(name)
             st.write(" ")
@@ -531,10 +529,28 @@ if ndf is not None:
                             width=600, 
                             xaxis_title="Classifier",
                             yaxis_title="Score",
-                            margin=dict(l=20,r=20,t=20,b=10))
+                            margin=dict(l=20,r=20,t=20,b=0))
             
         st.plotly_chart(fig4a)
-        st.info("*hover over graphs for more details")
+        
+#----------------------------------------------- ML self implement construction site----------------------------------------
+ 
+    from ml import test, get_clf
+    classifier = 'Regression'
+    ml_results = {}
+    ml_results = test(get_clf(classifier), ndf, 10)
+    #st.write(ml_results.keys())
+    ml_res_df = pd.DataFrame()
+    ml_res_df['accuracy'] = ml_results['accuracy']
+    ml_res_df['precision'] = ml_results['precision']
+    ml_res_df['recall'] = ml_results['recall']
+    ml_res_df['f1_score'] = ml_results['f1_score']
+    ml_res_df_ = ml_res_df.reset_index().rename(columns={'index': 'fold'})
+    ml_res_df_['fold']=ml_res_df_['fold'].values + 1
+
+    #st.write(np.mean(ml_results['accuracy']))
+    #st.write(np.mean(ml_results['f1_score']))
+    #st.metric(label='mean acc', value=mean_acc)
 
     if algorithm == 'SVM':
         results = cross_val_mat_SVM(ndf, 10)
@@ -550,29 +566,38 @@ if ndf is not None:
     scores_['fold']=scores_['fold'].values + 1
     
     st.markdown('## Chosen Classifier Performance')
-    c7b, c7c, c8 = st.columns((1.15,0.9, 3))
-    with c7b:
-        st.metric(label="", value="")
-        st.metric(label='Chosen algorithm: ',value = str(algorithm))
-        st.metric(label = 'Mean Score: ', value=round(scores.mean(),4))#, delta=(len(zero_values)*(-1)))
-        st.metric(label = 'Mean Std: ', value=round(scores.std(),4))
-    with c7c:
-        st.metric(label="", value="")
-        st.write(df_scores) # wollen wir das ganz anzeigen? Oder nur den mean + std deviation?
+    st.metric(label='Chosen algorithm: ',value = str(algorithm))
+    c7a, c7, c7b, c8 = st.columns((0.15,2,0.15,2)) 
+
+    with c7:
+        st.write("Results per fold")
+        st.write(ml_res_df_) # wollen wir das ganz anzeigen? Oder nur den mean + std deviation?
     
     with c8:
     # Gesamtgröße auf Seite anpassen
     # > requires Work-around, streamlit always scales to max container width..
-        #fig4b = px.box(scores_,x='fold', y='score', points='all')
-        fig4b = px.box(scores, points='all')
-        #fig4b.update_yaxes(range=[0.6,1.0])
-        fig4b.update_layout(height = 450,
-                            width=250, 
+        fig4b = px.box(ml_res_df, points='all')
+        #fig4a.update_yaxes(range=[0.6,1.0])
+        fig4b.update_layout(height = 400,
+                            width=533, 
                             xaxis_title=" ",
                             yaxis_title="Score",
                             margin=dict(l=20,r=20,t=20,b=10))
             
         st.plotly_chart(fig4b)
+        
+    c1, c2, c3, c4, c5 = st.columns((1,1,1,1,3))
+    with c1:
+        st.metric(label='Mean Accuracy', value=round(np.mean(ml_results['accuracy']),4))
+    with c2:
+        st.metric(label='Mean Precision', value=round(np.mean(ml_res_df['precision']),4))
+    with c3:
+        st.metric(label='Mean Recall', value=round(np.mean(ml_res_df['recall']),4))
+    with c4:
+        st.metric(label='Mean F1 score', value=round(np.mean(ml_res_df['f1_score']),4))
+    with c5:
+        st.info("*hover over graphs for more details")
+
 
     c9a, c9b,c10 = st.columns((0.25,6.5,6.5))
     with c9b:
@@ -584,6 +609,15 @@ if ndf is not None:
         plt.ylabel('Gold label')
         plt.xlabel('Predicted label')
         st.pyplot(fig1)
+ 
+        st.markdown('## **Confusion matrix 2.0**')
+        conf_mat2 = confusion_matrix(ml_results['y_true'],ml_results['y_pred'])
+        fig1b = plt.figure(figsize=(4,3))
+        sns.heatmap(conf_mat2, annot=True, cmap=plt.cm.Blues)
+        plt.tight_layout()
+        plt.ylabel('Gold label')
+        plt.xlabel('Predicted label')
+        st.pyplot(fig1b)
   
     #with c10:
         st.markdown('## **Classification report**')
@@ -595,3 +629,9 @@ if ndf is not None:
         sns.heatmap(pd.DataFrame(stats).iloc[:-1,:].T, annot=True, cmap=plt.cm.coolwarm)
         st.pyplot(fig2)
 
+        st.markdown('## **Classification report 2.0**')
+        stats2 = classification_report(ml_results['y_true'],ml_results['y_pred'], output_dict=True)
+        fig2b = plt.figure(figsize=(5.4,4))
+
+        sns.heatmap(pd.DataFrame(stats2).iloc[:-1,:].T, annot=True, cmap=plt.cm.coolwarm)
+        st.pyplot(fig2b)
