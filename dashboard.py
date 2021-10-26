@@ -536,7 +536,7 @@ if ndf is not None:
 #----------------------------------------------- ML self implement construction site----------------------------------------
  
     from ml import test, get_clf
-    classifier = 'Regression'
+    classifier = algorithm
     ml_results = {}
     ml_results = test(get_clf(classifier), ndf, 10)
     #st.write(ml_results.keys())
