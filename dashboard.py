@@ -12,7 +12,6 @@ from nltk.corpus import stopwords
 from nltk.probability import FreqDist
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
-#nltk.download()
 
 import plotly.express as px
 
@@ -38,12 +37,13 @@ Analyze how well your free-text data can be automatically scored
 # files could have header or not - done
 # TODO we should not rely on specific column names, but auto-detect what is probably what
 # TODO take care of encodings!
-
-uploaded_file = body.file_uploader("Upload dataset (csv format)")
-df = None
-ndf = None
+with st.sidebar:
+    uploaded_file = st.sidebar.expander("File Upload", expanded=True).file_uploader("Upload dataset (csv format)")
+    df = None
+    ndf = None
 if uploaded_file:
     #df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8") # add encoding?
+    #TODO add regex for delimiter for tab, komma, semi colon
     df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8", header=None)
     n_columns = len(df.columns)
 
@@ -71,8 +71,8 @@ if uploaded_file:
             except ValueError:
                 str(df.iloc[0][i])
     
-#---------------------------------------Sidebar------------------------------------------------
-    st.sidebar.header('Configuration')
+#---------------------------------------Sidebar start------------------------------------------------
+    st.sidebar.header('Data Upload')
 
     with st.sidebar.expander("Data Upload", expanded=True):
         st.markdown("#### Assign the content of the first row of your data")
@@ -81,41 +81,105 @@ if uploaded_file:
         else:
             set_option01 = 0
         option01 = st.radio("First row contains :", ["Header", "Data"], index = set_option01)
+# ------------------------------------- Sidebar stop -----------------------------------------------
+
+    # hasNoHeader enthält die Prognose, ob die erste Zeile der csv Datei Daten enthält oder nicht
+    if len(hasNoHeader) >= 1:
+        hasNoHeader = all(hasNoHeader)
+    else: 
+        hasNoHeader = False
+    
+    first_row = []
+    for col in df.columns:
+        first_row.append(col)
+
+    # Text (Vor-) Verarbeitung, alles in lower case setzen
+    for elem in first_row:
+        if type(elem) == str:
+            elem.lower()
+        
+    # check if content is convertible to int
+    def tryInt(item):
+        try:
+            item = int(item)
+            return item
+        except ValueError:
+            return item
+
+    # check if content is convertible to float
+    def tryFloat(item):
+        try:
+            if not type(item) == int:
+                item = float(item)
+            return item
+        except ValueError:
+            return item
+    # string to int of '5.0' throws exception while string to float does not -> order 
+
+    # add first line of file (now as header in columns) back as first line of data to dataframe
+    # currently implemented for int data type
+    # TODO implement also for float data type - done
+    # ..other data types necessary?
+    if option01 == "Header" and not hasNoHeader:
+
+        headers = df.iloc[0]
+        df = df.drop(index=[0])
+        df.columns=headers
+
+        df.index = df.index - 1
+
+    # catch case when first line data types are not compatible to DataFrame data types (saved in hasNoHeader)    
+    elif option01 == "Header" and hasNoHeader:
+        st.error("The type of the first row and the second row of your data match. Therefore we assume the first row also contains data. Please check your file for assertion. ")
+    elif option01 == "Data" and not hasNoHeader:
+        st.error("There are type mismatches between the first row and the second row of your data. Therefore we assume the presence of a header. Please check your file for inconsistencies. ")
+        df = df.drop(index=[0])
+        # alternativ alles stoppen
+        # st.stop()
+    # do not proceed computing while text + label have not been selected yet!
+    # TODO check if two distinct(!) columns have been selected at least..(data, label; id optional)
+    
+# ------------------------------------------- Sidebar start ---------------------------------------  
+    #with st.sidebar:
+    with st.sidebar.expander("Column selection", expanded=True):
 
         st.markdown("#### Confirm the preselections \n **or** select the corresponding columns: ")
+
+        first_row = [None]
+        for col in df.columns:
+            first_row.append(col)
         
         with st.form('Chose Columns'):
-            col_choices = [None]
-            for i in range(n_columns):
-                col_choices.append(str(i))
-        
-            first_row = []
-            for col in df.columns:
-                first_row.append(col)
-
+            #col_choices = [None]
+            #for i in range(n_columns):
+            #    col_choices.append(str(i))
+            
             if "id" in first_row:
                 ind_id = first_row.index("id")
-                col_id = st.selectbox("Select ID column", col_choices, index=ind_id+1)
+                col_id = st.selectbox("Select ID column", first_row, index=ind_id)
             else:
-                col_id = st.selectbox("Select ID column", col_choices)
+                col_id = st.selectbox("Select ID column", first_row)
             if "text" in first_row:
                 ind_text = first_row.index("text")
-                col_text = st.selectbox("Select text column", col_choices, index=ind_text+1)
+                col_text = st.selectbox("Select text column", first_row, index=ind_text)
             else:
-                col_text = st.selectbox("Select text column", col_choices)
+                col_text = st.selectbox("Select text column", first_row)
 
             if "label" in first_row:
                 ind_label = first_row.index("label")
-                col_label = st.selectbox("Select label column", col_choices, index=ind_label+1)
+                col_label = st.selectbox("Select label column", first_row, index=ind_label)
             else:
-                col_label = st.selectbox("Select label column", col_choices)
+                col_label = st.selectbox("Select label column", first_row)
 
-            submitted01 = st.form_submit_button('Submit')
+            submitted01 = st.form_submit_button('Confirm')
             #if submitted01:
             #    st.write(col_id, col_text, col_label)
 #---------------------------------Sidebar - break ---------------------------------------------------
 
     with load_data:
+        st.subheader("Preview of your data")
+        df.index = df.index + 1
+        st.write(df.head()) 
 
         # attention: lines that are outcommented in multiple lines will be shown as code in the app !
 
@@ -137,80 +201,28 @@ if uploaded_file:
 
         # ggf noch Denkfehler drin, soll für jedes Paar der Spalten von Columns und der ersten Datenspalte prüfen,
         # ob bei den gleichen Datentyp enthalten ()= Columns enthält evtl. Daten) oder nicht (= enthält Header)
+        first_row = []
+        for col in df.columns:
+            first_row.append(col)
 
-        # hasNoHeader enthält die Prognose, ob die erste Zeile der csv Datei Daten enthält oder nicht
-        if len(hasNoHeader) >= 1:
-            hasNoHeader = all(hasNoHeader)
-        else: 
-            hasNoHeader = False
-
-        # Text (Vor-) Verarbeitung, alles in lower case setzen
-        for elem in first_row:
-            if type(elem) == str:
-               elem.lower()
-
-        st.subheader("Preview of your data")
-        st.write(df.head())
-        
-        # check if content is convertible to int
-        def tryInt(item):
-            try:
-                item = int(item)
-                return item
-            except ValueError:
-                return item
-
-        # check if content is convertible to float
-        def tryFloat(item):
-            try:
-                if not type(item) == int:
-                    item = float(item)
-                return item
-            except ValueError:
-                return item
-        # string to int of '5.0' throws exception while string to float does not -> order 
-
-        # add first line of file (now as header in columns) back as first line of data to dataframe
-        # currently implemented for int data type
-        # TODO implement also for float data type - done
-        # ..other data types necessary?
-        if option01 == "Header" and not hasNoHeader:
-
-            headers = df.iloc[0]
-            df = df.drop(index=[0])
-            df.columns=headers
-
-            df.index = df.index - 1
-            st.write(df.head())
-
-        # catch case when first line data types are not compatible to DataFrame data types (saved in hasNoHeader)    
-        elif option01 == "Header" and hasNoHeader:
-            st.error("The type of the first row and the second row of your data match. Therefore we assume the first row also contains data. Please check your file for assertion. ")
-        elif option01 == "Data" and not hasNoHeader:
-            st.error("There are type mismatches between the first row and the second row of your data. Therefore we assume the presence of a header. Please check your file for inconsistencies. ")
-            df = df.drop(index=[0])
-            # alternativ alles stoppen
-            # st.stop()
-        # do not proceed computing while text + label have not been selected yet!
-        # TODO check if two distinct(!) columns have been selected at least..(data, label; id optional)
-        
         if col_id is not None and col_text is not None and col_label is not None:
-            col_id = int(col_id)
-            col_text = int(col_text)
-            col_label = int(col_label)
+            idx_col_id = first_row.index(col_id) #= int(col_id)
+            idx_col_text = first_row.index(col_text) #= int(col_text)
+            idx_col_label = first_row.index(col_label) #= int(col_label)
+        
             new_df = pd.DataFrame(columns=["id","text","label"])
-            new_df["id"] = df[df.columns[col_id]]
-            new_df["text"] = df[df.columns[col_text]]
-            new_df["label"] = df[df.columns[col_label]]
+            new_df["id"] = df[df.columns[idx_col_id]]
+            new_df["text"] = df[df.columns[idx_col_text]]
+            new_df["label"] = df[df.columns[idx_col_label]]
             ndf = new_df
             zero_values = ndf[ndf['id'].isna()|ndf['text'].isna()|ndf['label'].isna()]
 
         elif col_text is not None and col_label is not None:
-            col_text = int(col_text)
-            col_label = int(col_label)
+            idx_col_text = first_row.index(col_text) #= int(col_text)
+            idx_col_label = first_row.index(col_label) #= int(col_label)
             new_df = pd.DataFrame(columns=["text","label"])
-            new_df["text"] = df[df.columns[col_text]]
-            new_df["label"] = df[df.columns[col_label]]
+            new_df["text"] = df[df.columns[idx_col_text]]
+            new_df["label"] = df[df.columns[idx_col_label]]
             ndf = new_df
             zero_values = ndf[ndf['text'].isna()|ndf['label'].isna()]
         else:
@@ -250,8 +262,7 @@ if ndf is not None:
             st.warning("Data amount low. Results might be skewed.")
         else:
             st.success("Data amount is sufficient.")
-            
-        #@TODO Warning if too low
+
         #TODO connect with label type selection, auto-select or user select priority?
         labels = list(set(ndf["label"]))
         #TODO Abbruch-Bedingung mit RegEx für String?
@@ -260,6 +271,11 @@ if ndf is not None:
             labels[i] = tryFloat(labels[i])
         if type(labels[0]) == int or type(labels[0])==float:
             labels.sort()
+            if type(labels[0]) == int:
+                label_type_idx = 1
+            elif type(labels[1]) == float:
+                label_type_idx = 2
+
   
         with c01:    
             st.metric(label = "Number of labels: ", value=len(labels))
@@ -278,13 +294,34 @@ if ndf is not None:
         st.bar_chart(label_freq,width=110*len(labels), use_container_width=num_labels)
         st.info("*Hover over bars to see exact values")
 
-
         #fig3 = sns.catplot(x='label', kind='count',height=5, aspect=3, data=ndf)#,points='all')
         #st.pyplot(fig3)
         
         # TODO Warning if imbalanced
         # Darstellung der Label Verteilung: Bar Chart mit 110pixel*len(labels), Knackpunkt: 9 Daten-Kolumnen
 
+# ---------------------------------------------- Sidebar ---------------------------------------------------
+    
+    st.sidebar.header('Configuration')
+
+    # Language
+    option02 = st.sidebar.selectbox(
+        'Which language?',
+        ['German','English'])
+
+    # Numerical Data?
+    label_type = st.sidebar.radio(
+        "Label type?",
+        ('Categorical', 'Numeric - discrete', 'Numeric continuous'), index = label_type_idx)
+        # categorical: String, dicrete: int, continuous: float
+
+    #Algorithm?
+    algorithm = st.sidebar.radio(
+        "Algorithm?",
+        ('SVM', 'Regression', 'Decision Tree', 'Random Forest'))
+# ------------------------------------------------------------------------------------------------------
+
+    with data_stats:
         # Ratio
         #label_dist = label_counts.min()/label_counts.max()
         #st.write(label_dist)
@@ -310,6 +347,7 @@ if ndf is not None:
             st.write("\n")
             with c1:
                 st.write("Original data")
+                ndf.index = ndf.index +1
                 st.dataframe(ndf['text'])
             # average no tokens
             #av_df['test'] = ndf['text'].apply(lambda x: "Hallo."+ str(x))    # debug Test
@@ -326,26 +364,30 @@ if ndf is not None:
             with c2:
                 st.write("Average stats: counts + lengths")
                 st.write(av_df)
+        if label_type == 'Numeric - discrete' or label_type == 'Numeric continuous':
+            sorted_av_df = av_df.sort_values(by='label')
+        else:
+            sorted_av_df = av_df
 
         st.markdown('### Plot Test SNS displot')
         with st.expander(label="Show/Hide Distribution plots",expanded=True):
-            fig1a = sns.displot(av_df, x="#chars/entry", hue='label', kde = True, height=5, aspect=3)
-            fig1a.set_xlabels("Counts - #chars/entry")
-            fig1a.set_ylabels("Instances")
-            st.pyplot(fig1a)
+            #fig1a = sns.displot(sorted_av_df, x="#chars/entry", hue='label', kde = True, height=5, aspect=3)
+            #fig1a.set_xlabels("Counts - #chars/entry")
+            #fig1a.set_ylabels("Instances")
+            #st.pyplot(fig1a)
 
-            fig1b = sns.displot(av_df, x="#chars/sentence", hue='label', kde = True, height=5, aspect=3)
-            fig1b.set_xlabels("Counts - #chars/sentence")
-            fig1b.set_ylabels("Instances")
-            st.pyplot(fig1b)
+            #fig1b = sns.displot(sorted_av_df, x="#chars/sentence", hue='label', kde = True, height=5, aspect=3)
+            #fig1b.set_xlabels("Counts - #chars/sentence")
+            #fig1b.set_ylabels("Instances")
+            #st.pyplot(fig1b)
 
-            fig1c = sns.displot(av_df, x="#words/entry", hue='label', kde = True, height=5, aspect=3)
+            fig1c = sns.displot(sorted_av_df, x="#words/entry", hue='label', kind='kde', height=5, aspect=3)
             fig1c.set_xlabels("Counts - #words/entry")
-            fig1c.set_ylabels("Instances")
+            fig1c.set_ylabels("Proportion")
             st.pyplot(fig1c)
 
-            fig1d = sns.displot(av_df, x="#words/sentence", hue='label', kde = True, height=5, aspect=3)
-            fig1d.set_xlabels("Counts - #words/sentence")
+            fig1d = sns.displot(sorted_av_df, x="#words/entry", hue='label', kde = True, height=5, aspect=3)
+            fig1d.set_xlabels("Counts - #words/entry")
             fig1d.set_ylabels("Instances")
             st.pyplot(fig1d)
 
@@ -353,28 +395,28 @@ if ndf is not None:
 
         av_df_char = pd.DataFrame()
         av_df_word = pd.DataFrame()
-        av_df_char['#chars/entry'] = av_df['#chars/entry']
-        av_df_char['#chars/sentence'] = av_df['#chars/sentence']
-        av_df_char['label'] = av_df['label']
-        av_df_word['#words/entry'] = av_df['#words/entry']
-        av_df_word['#words/sentence'] = av_df['#words/sentence']
-        av_df_word['label'] = av_df['label']
+        av_df_char['#chars/entry'] = sorted_av_df['#chars/entry']
+        #av_df_char['#chars/sentence'] = sorted_av_df['#chars/sentence']
+        av_df_char['label'] = sorted_av_df['label']
+        av_df_word['#words/entry'] = sorted_av_df['#words/entry']
+        #av_df_word['#words/sentence'] = sorted_av_df['#words/sentence']
+        av_df_word['label'] = sorted_av_df['label']
 
         #fig0a = px.box(av_df, color='label')#,points='all')
         #fig0a.update_layout()#(width=400, height=500)
         #st.plotly_chart(fig0a)
 
-        word_c, char_c = st.columns(2)
-        with char_c:
-            fig0b = px.box(av_df_char, color='label', color_discrete_sequence=px.colors.qualitative.Vivid)#,points='all')
-            fig0b.update_layout(width=600, 
-                                height=500,
-                                xaxis_title="",
-                                yaxis_title="Counts")
-            st.plotly_chart(fig0b)
+        c1, word_c = st.columns((0.1,2))
+        #with char_c:
+        #    fig0b = px.box(av_df_char, color='label', color_discrete_sequence=px.colors.qualitative.Vivid)#,points='all')
+        #    fig0b.update_layout(width=600, 
+        #                        height=500,
+        #                        xaxis_title="",
+        #                        yaxis_title="Counts")
+        #    st.plotly_chart(fig0b)
         with word_c:
             fig0c = px.box(av_df_word, color='label',color_discrete_sequence=px.colors.qualitative.Vivid)#,points='all')
-            fig0c.update_layout(width=600, 
+            fig0c.update_layout(width=225*len(labels), 
                                 height=500,
                                 xaxis_title="",
                                 yaxis_title="Counts")
@@ -449,23 +491,6 @@ if ndf is not None:
 
         #st.line_chart(ttr_df['TTR'])
         #st.bar_chart(ttr_df['TTR'])
-
-# Sidebar ----------------------------------------------------------------------------
-    # Language
-    option02 = st.sidebar.selectbox(
-        'Which language?',
-        ['German','English'])
-
-    # Numerical Data?
-    label_type = st.sidebar.radio(
-        "Label type?",
-        ('Categorical', 'Numeric - discrete', 'Numeric continuous'))
-        # categorical: String, dicrete: int, continuous: float
-
-    #Algorithm?
-    algorithm = st.sidebar.radio(
-        "Algorithm?",
-        ('SVM', 'Regression', 'Decision Tree', 'Random Forest'))
 
     # ML -------------------------------------------------------------------------------------
     st.markdown('# Machine Learning Stats')
@@ -552,18 +577,18 @@ if ndf is not None:
     #st.write(np.mean(ml_results['f1_score']))
     #st.metric(label='mean acc', value=mean_acc)
 
-    if algorithm == 'SVM':
-        results = cross_val_mat_SVM(ndf, 10)
-    elif algorithm == 'Regression':
-        results = cross_val_reg(ndf, 10)
-    elif algorithm == 'Decision Tree':
-        results = cross_val_dtree(ndf, 10, stops)
+    #if algorithm == 'SVM':
+    #    results = cross_val_mat_SVM(ndf, 10)
+    #elif algorithm == 'Regression':
+    #    results = cross_val_reg(ndf, 10)
+    #elif algorithm == 'Decision Tree':
+    #    results = cross_val_dtree(ndf, 10, stops)
 
-    scores = results['scores']
+    #scores = results['scores']
 
-    df_scores = pd.DataFrame(data=scores, columns=['score'])
-    scores_ = df_scores.reset_index().rename(columns={'index': 'fold', 'score': 'score'})
-    scores_['fold']=scores_['fold'].values + 1
+    #df_scores = pd.DataFrame(data=scores, columns=['score'])
+    #scores_ = df_scores.reset_index().rename(columns={'index': 'fold', 'score': 'score'})
+    #scores_['fold']=scores_['fold'].values + 1
     
     st.markdown('## Chosen Classifier Performance')
     st.metric(label='Chosen algorithm: ',value = str(algorithm))
@@ -571,6 +596,7 @@ if ndf is not None:
 
     with c7:
         st.write("Results per fold")
+        ml_res_df_.index = ml_res_df_.index + 1
         st.write(ml_res_df_) # wollen wir das ganz anzeigen? Oder nur den mean + std deviation?
     
     with c8:
@@ -601,16 +627,16 @@ if ndf is not None:
 
     c9a, c9b,c10 = st.columns((0.25,6.5,6.5))
     with c9b:
-        st.markdown('## **Confusion matrix**')
-        conf_mat = confusion_matrix(results['y'],results['y_pred'])
-        fig1 = plt.figure(figsize=(4,3))
-        sns.heatmap(conf_mat, annot=True, cmap=plt.cm.Blues)
-        plt.tight_layout()
-        plt.ylabel('Gold label')
-        plt.xlabel('Predicted label')
-        st.pyplot(fig1)
+        #st.markdown('## **Confusion matrix**')
+        #conf_mat = confusion_matrix(results['y'],results['y_pred'])
+        #fig1 = plt.figure(figsize=(4,3))
+        #sns.heatmap(conf_mat, annot=True, cmap=plt.cm.Blues)
+        #plt.tight_layout()
+        #plt.ylabel('Gold label')
+        #plt.xlabel('Predicted label')
+        #st.pyplot(fig1)
  
-        st.markdown('## **Confusion matrix 2.0**')
+        st.markdown('## **Confusion matrix **') # matrix 2.0
         conf_mat2 = confusion_matrix(ml_results['y_true'],ml_results['y_pred'])
         fig1b = plt.figure(figsize=(4,3))
         sns.heatmap(conf_mat2, annot=True, cmap=plt.cm.Blues)
@@ -620,16 +646,16 @@ if ndf is not None:
         st.pyplot(fig1b)
   
     #with c10:
-        st.markdown('## **Classification report**')
-        stats = classification_report(results['y'],results['y_pred'], output_dict=True)
-        fig2 = plt.figure(figsize=(5.4,4))
-        # sns.heatmap(pd.DataFrame(stats).iloc[:-1,:].T, annot=True, cmap=plt.cm.Blues) # to exclude support
-        # standard cmap "Blues", yellow-green-purple alternative: "viridism" red-blue: "coolwarm", red-black-ish: "magma"
-        # dezent bunt: "cubehelix", "Spectral"
-        sns.heatmap(pd.DataFrame(stats).iloc[:-1,:].T, annot=True, cmap=plt.cm.coolwarm)
-        st.pyplot(fig2)
+        #st.markdown('## **Classification report**')
+        #stats = classification_report(results['y'],results['y_pred'], output_dict=True)
+        #fig2 = plt.figure(figsize=(5.4,4))
+        ## sns.heatmap(pd.DataFrame(stats).iloc[:-1,:].T, annot=True, cmap=plt.cm.Blues) # to exclude support
+        ## standard cmap "Blues", yellow-green-purple alternative: "viridism" red-blue: "coolwarm", red-black-ish: "magma"
+        ## dezent bunt: "cubehelix", "Spectral"
+        #sns.heatmap(pd.DataFrame(stats).iloc[:-1,:].T, annot=True, cmap=plt.cm.coolwarm)
+        #st.pyplot(fig2)
 
-        st.markdown('## **Classification report 2.0**')
+        st.markdown('## **Classification report **') # 2.0
         stats2 = classification_report(ml_results['y_true'],ml_results['y_pred'], output_dict=True)
         fig2b = plt.figure(figsize=(5.4,4))
 

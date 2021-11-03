@@ -105,7 +105,7 @@ def cross_val_test(df, k):
             ('tfidf_vec', TfidfVectorizer(ngram_range=(1,3))),
             ('clf', classifiers[key]),
         ])
-        scores = cross_val_score(pipeline, x, y, cv = k, scoring='f1_micro', error_score="raise")
+        scores = cross_val_score(pipeline, x, y, cv = k, scoring='f1_macro', error_score="raise")
         results_dict[str(key)] = scores
         results_df[str(key)+ " score"] = results_dict[str(key)]
     return results_df
@@ -132,6 +132,7 @@ def get_clf(clf):
 
 @st.cache
 def test(clf, df,k):
+    df.index = df.index - 1 #needed since index +1 for visualization
     container = {}
     all_y_test = []
     all_y_pred = []

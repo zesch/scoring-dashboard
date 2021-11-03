@@ -43,7 +43,7 @@ def most_freq_ngrams_CountVec(ndf, labels, n, start, stop):
             to_add = freq_per_label[str(key)].head(n)
             #st.write('to add: ', to_add)
             most_commons = pd.concat([most_commons, to_add], axis=1)
-
+        most_commons.index = most_commons.index +1
         st.write('Label: ', str(label),  most_commons)
         # wenn @cache muss das st.write ausgelagert werden..
     return freq_per_label   
