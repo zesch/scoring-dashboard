@@ -1,3 +1,4 @@
+from os import error, sep
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,6 +8,7 @@ import base64
 from ml import cross_validate, cross_val_dtree, cross_val_reg, cross_val_mat_SVM, cross_val_test
 from most_common_ngrams import most_freq_ngrams_CountVec
 
+import re
 import nltk
 from nltk.corpus import stopwords
 from nltk.probability import FreqDist
@@ -42,9 +44,25 @@ with st.sidebar:
     df = None
     ndf = None
 if uploaded_file:
+    
+    #st.write(uploaded_file)
     #df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8") # add encoding?
-    #TODO add regex for delimiter for tab, komma, semi colon
-    df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8", header=None)
+    #TODO add regex for delimiter for tab, komma, semi colon try catch case!!
+    with st.sidebar.expander("Set delimiter: ", expanded=True):
+        if uploaded_file.name.endswith(".csv"):
+            delimiter = st.text_input('Used delimiter: ',value=',')
+            st.warning("Only change delimiter when data is not displayed correctly.")
+            #df = pd.read_csv(uploaded_file, sep=',', encoding = "utf-8", header=None)
+        elif uploaded_file.name.endswith(".tsv"):
+            delimiter = st.text_input('Used delimiter: ',value='\t')
+            st.warning("Only change delimiter when data is not displayed correctly!")
+            #df = pd.read_csv(uploaded_file, sep='\t', encoding = "utf-8", header=None)
+        #else - case: get user to upload file again and enter separator
+        else:
+            st.warning("Please enter the delimiter your data is separated with:")
+            delimiter = st.text_input('Enter delimiter: ')
+    df = pd.read_csv(uploaded_file, sep=delimiter, encoding = "utf-8", header=None)
+
     n_columns = len(df.columns)
 
     hasNoHeader = [] # implementiert über list of booleans und anschließende Ver-Undung
@@ -179,7 +197,9 @@ if uploaded_file:
     with load_data:
         st.subheader("Preview of your data")
         df.index = df.index + 1
-        st.write(df.head()) 
+        st.write(df.head())
+        
+
 
         # attention: lines that are outcommented in multiple lines will be shown as code in the app !
 
@@ -241,6 +261,8 @@ if ndf is not None:
     #TODO catch missing id - case id yes/no
 
     ndf = ndf.dropna(subset=['text']).reset_index()
+    ndf = ndf.dropna(subset=['label']).reset_index()
+    
 
     with data_stats:
         st.markdown('## **Dataset Statistics**')
@@ -266,6 +288,7 @@ if ndf is not None:
         #TODO connect with label type selection, auto-select or user select priority?
         labels = list(set(ndf["label"]))
         #TODO Abbruch-Bedingung mit RegEx für String?
+        label_type_idx = 0
         for i in range(len(labels)):
             labels[i] = tryInt(labels[i])
             labels[i] = tryFloat(labels[i])
