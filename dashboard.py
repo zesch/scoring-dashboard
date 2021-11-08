@@ -5,7 +5,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import base64
-from ml import cross_validate, cross_val_dtree, cross_val_reg, cross_val_mat_SVM, cross_val_test
+from ml import cross_val_test
 from most_common_ngrams import most_freq_ngrams_CountVec
 
 import re
@@ -16,282 +16,28 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
 
 import plotly.express as px
-
-# set page dimension, title and icon
-st.set_page_config("Scoring Dashboard", None, "wide", "auto")
-
-body, stats = st.columns((4, 1))
-
-# Aufteilung des Codes in Container-Bereiche entsprechend den (inhaltlichen) Teilbereichen
-load_data = st.container()
-data_stats = st.container()
-machine_learning = st.container()
-ml_stats = st.container()
-
-body.write(
-"""
-# Free-text Scoring Dashboard
-
-Analyze how well your free-text data can be automatically scored
-"""
-)
-
-# files could have header or not - done
-# TODO we should not rely on specific column names, but auto-detect what is probably what
-# TODO take care of encodings!
-with st.sidebar:
-    uploaded_file = st.sidebar.expander("File Upload", expanded=True).file_uploader("Upload dataset (csv format)")
-    df = None
-    ndf = None
-if uploaded_file:
-    
-    #st.write(uploaded_file)
-    #df = pd.read_csv(uploaded_file, delimiter="\t", encoding = "utf-8") # add encoding?
-    #TODO add regex for delimiter for tab, komma, semi colon try catch case!!
-    with st.sidebar.expander("Set delimiter: ", expanded=True):
-        if uploaded_file.name.endswith(".csv"):
-            delimiter = st.text_input('Used delimiter: ',value=',')
-            st.warning("Only change delimiter when data is not displayed correctly.")
-            #df = pd.read_csv(uploaded_file, sep=',', encoding = "utf-8", header=None)
-        elif uploaded_file.name.endswith(".tsv"):
-            delimiter = st.text_input('Used delimiter: ',value='\t')
-            st.warning("Only change delimiter when data is not displayed correctly!")
-            #df = pd.read_csv(uploaded_file, sep='\t', encoding = "utf-8", header=None)
-        #else - case: get user to upload file again and enter separator
-        else:
-            st.warning("Please enter the delimiter your data is separated with:")
-            delimiter = st.text_input('Enter delimiter: ')
-    df = pd.read_csv(uploaded_file, sep=delimiter, encoding = "utf-8", header=None)
-
-    n_columns = len(df.columns)
-
-    hasNoHeader = [] # implementiert über list of booleans und anschließende Ver-Undung
-    for i in range (len(df.iloc[0])):
-        #st.write(df.iloc[0][i])
-        #st.write(df.iloc[1][i])
-        try:
-            header_item = int(df.iloc[0][i])
-            data_item = int(df.iloc[1][i])
-            if type(header_item) == type(data_item):
-                hasNoHeader.append(True)
-            else:
-                hasNoHeader.append(False)
-
-        except ValueError:
-            try:
-                header_item = float(df.iloc[0][i])
-                data_item = float(df.iloc[1][i])
-                if type(header_item) == type(data_item):
-                   hasNoHeader.append(True)
-                else:
-                    hasNoHeader.append(False)
-
-            except ValueError:
-                str(df.iloc[0][i])
-    
-#---------------------------------------Sidebar start------------------------------------------------
-    st.sidebar.header('Data Upload')
-
-    with st.sidebar.expander("Data Upload", expanded=True):
-        st.markdown("#### Assign the content of the first row of your data")
-        if hasNoHeader:
-            set_option01 = 1
-        else:
-            set_option01 = 0
-        option01 = st.radio("First row contains :", ["Header", "Data"], index = set_option01)
-# ------------------------------------- Sidebar stop -----------------------------------------------
-
-    # hasNoHeader enthält die Prognose, ob die erste Zeile der csv Datei Daten enthält oder nicht
-    if len(hasNoHeader) >= 1:
-        hasNoHeader = all(hasNoHeader)
-    else: 
-        hasNoHeader = False
-    
-    first_row = []
-    for col in df.columns:
-        first_row.append(col)
-
-    # Text (Vor-) Verarbeitung, alles in lower case setzen
-    for elem in first_row:
-        if type(elem) == str:
-            elem.lower()
-        
-    # check if content is convertible to int
-    def tryInt(item):
-        try:
-            item = int(item)
-            return item
-        except ValueError:
-            return item
-
-    # check if content is convertible to float
-    def tryFloat(item):
-        try:
-            if not type(item) == int:
-                item = float(item)
-            return item
-        except ValueError:
-            return item
-    # string to int of '5.0' throws exception while string to float does not -> order 
-
-    # add first line of file (now as header in columns) back as first line of data to dataframe
-    # currently implemented for int data type
-    # TODO implement also for float data type - done
-    # ..other data types necessary?
-    if option01 == "Header" and not hasNoHeader:
-
-        headers = df.iloc[0]
-        df = df.drop(index=[0])
-        df.columns=headers
-
-        df.index = df.index - 1
-
-    # catch case when first line data types are not compatible to DataFrame data types (saved in hasNoHeader)    
-    elif option01 == "Header" and hasNoHeader:
-        st.error("The type of the first row and the second row of your data match. Therefore we assume the first row also contains data. Please check your file for assertion. ")
-    elif option01 == "Data" and not hasNoHeader:
-        st.error("There are type mismatches between the first row and the second row of your data. Therefore we assume the presence of a header. Please check your file for inconsistencies. ")
-        df = df.drop(index=[0])
-        # alternativ alles stoppen
-        # st.stop()
-    # do not proceed computing while text + label have not been selected yet!
-    # TODO check if two distinct(!) columns have been selected at least..(data, label; id optional)
-    
-# ------------------------------------------- Sidebar start ---------------------------------------  
-    #with st.sidebar:
-    with st.sidebar.expander("Column selection", expanded=True):
-
-        st.markdown("#### Confirm the preselections \n **or** select the corresponding columns: ")
-
-        first_row = [None]
-        for col in df.columns:
-            first_row.append(col)
-        
-        with st.form('Chose Columns'):
-            #col_choices = [None]
-            #for i in range(n_columns):
-            #    col_choices.append(str(i))
-            
-            if "id" in first_row:
-                ind_id = first_row.index("id")
-                col_id = st.selectbox("Select ID column", first_row, index=ind_id)
-            else:
-                col_id = st.selectbox("Select ID column", first_row)
-            if "text" in first_row:
-                ind_text = first_row.index("text")
-                col_text = st.selectbox("Select text column", first_row, index=ind_text)
-            else:
-                col_text = st.selectbox("Select text column", first_row)
-
-            if "label" in first_row:
-                ind_label = first_row.index("label")
-                col_label = st.selectbox("Select label column", first_row, index=ind_label)
-            else:
-                col_label = st.selectbox("Select label column", first_row)
-
-            submitted01 = st.form_submit_button('Confirm')
-            #if submitted01:
-            #    st.write(col_id, col_text, col_label)
-#---------------------------------Sidebar - break ---------------------------------------------------
-
-    with load_data:
-        st.subheader("Preview of your data")
-        df.index = df.index + 1
-        st.write(df.head())
-        
-
-
-        # attention: lines that are outcommented in multiple lines will be shown as code in the app !
-
-        # some pre-code for the auto-detection of column-content
-           
-#        for elem in first_row:
-#            try:
-#                int(df[elem][0])
-#                st.write("is Int")     
-#            except ValueError:
-#                try:
-#                    float(df[elem][0])
-#                    st.write("is float")
-#                except ValueError:
-#                    str(df[elem][0])
-#                    st.write("convertible to string")
-#            finally:
-#                st.write()    
-
-        # ggf noch Denkfehler drin, soll für jedes Paar der Spalten von Columns und der ersten Datenspalte prüfen,
-        # ob bei den gleichen Datentyp enthalten ()= Columns enthält evtl. Daten) oder nicht (= enthält Header)
-        first_row = []
-        for col in df.columns:
-            first_row.append(col)
-
-        if col_id is not None and col_text is not None and col_label is not None:
-            idx_col_id = first_row.index(col_id) #= int(col_id)
-            idx_col_text = first_row.index(col_text) #= int(col_text)
-            idx_col_label = first_row.index(col_label) #= int(col_label)
-        
-            new_df = pd.DataFrame(columns=["id","text","label"])
-            new_df["id"] = df[df.columns[idx_col_id]]
-            new_df["text"] = df[df.columns[idx_col_text]]
-            new_df["label"] = df[df.columns[idx_col_label]]
-            ndf = new_df
-            zero_values = ndf[ndf['id'].isna()|ndf['text'].isna()|ndf['label'].isna()]
-
-        elif col_text is not None and col_label is not None:
-            idx_col_text = first_row.index(col_text) #= int(col_text)
-            idx_col_label = first_row.index(col_label) #= int(col_label)
-            new_df = pd.DataFrame(columns=["text","label"])
-            new_df["text"] = df[df.columns[idx_col_text]]
-            new_df["label"] = df[df.columns[idx_col_label]]
-            ndf = new_df
-            zero_values = ndf[ndf['text'].isna()|ndf['label'].isna()]
-        else:
-            st.error("You have not yet selected the mandatory columns text and/or label.")
-
-        if ndf is not None and submitted01: 
-            st.write("Your selection:", ndf.head())
-
-# ab hier bei Zugriffen auf ID - prüfen, ob ID in df gesetzt ist!
-# df ab hier umbenannt zu ndf (dataframe mit der Columnen-Auswahl, falls data hochgeladen wird, die mehr als nur die 2-3 Spalten enthält)
-
-# ----------------------------------------Data Analysis Part-----------------------------------------------
-
-if ndf is not None:
-    
-    #TODO catch missing id - case id yes/no
-
-    ndf = ndf.dropna(subset=['text']).reset_index()
-    ndf = ndf.dropna(subset=['label']).reset_index()
-    
-
+ 
+def print_data_stats(label_type):
     with data_stats:
         st.markdown('## **Dataset Statistics**')
-        instances = len(ndf)
-        c0, c01,c02,c_space = st.columns((1,1,1.5,1.5))
+        nrof_instances = len(df)
+        c1, c2, c3, c4 = st.columns((1, 1, 1.5, 1.5))
 
-        with c0:
-            st.metric(label = 'Number of instances: ', value=instances, delta=str(len(zero_values)*(-1))+" *")
-            st.markdown("##### * Number of NaN instances")
-            st.write(" ")
+        with c1:
+            st.metric(label = 'Number of instances: ', value=nrof_instances)
 
-        if instances < 10:
-            st.error("The amount of data is too low for correct analysis.")
-            st.error("Programm will be terminated. Please try again with a larger data set.")
+        if nrof_instances < 10:
+            st.error("The amount of data is too low to train a machine learning model.")
+            st.error("Please upload a dataset with more answers.")
             st.stop()
-            # 'st.stop' stops further processing
-            # noch einen Regulator einfügen? > 'stop'
-        elif instances < 100:
+        elif nrof_instances < 100:
             st.warning("Data amount low. Results might be skewed.")
         else:
-            st.success("Data amount is sufficient.")
+            st.success("Sufficient amount of data detected. Proceedings with machine learning part")
 
         #TODO connect with label type selection, auto-select or user select priority?
-        labels = list(set(ndf["label"]))
-        #TODO Abbruch-Bedingung mit RegEx für String?
+        labels = list(set(df[col_label]))
         label_type_idx = 0
-        for i in range(len(labels)):
-            labels[i] = tryInt(labels[i])
-            labels[i] = tryFloat(labels[i])
         if type(labels[0]) == int or type(labels[0])==float:
             labels.sort()
             if type(labels[0]) == int:
@@ -299,22 +45,20 @@ if ndf is not None:
             elif type(labels[1]) == float:
                 label_type_idx = 2
 
-  
-        with c01:    
+        with c2:    
             st.metric(label = "Number of labels: ", value=len(labels))
-        with c02:
+        with c3:
             show_labels = str(labels)
             st.metric("Labels: ", show_labels)
         
-        label_counts = ndf["label"].value_counts()
-        label_freq = ndf["label"].value_counts(normalize=True)
-          
+        label_freq = df[col_label].value_counts(normalize=True)
+            
         if len(labels) >= 9:
             num_labels = True
         else:
             num_labels = False
         st.markdown("### Label distribution")
-        st.bar_chart(label_freq,width=110*len(labels), use_container_width=num_labels)
+        st.bar_chart(label_freq, width=110*len(labels), use_container_width=num_labels)
         st.info("*Hover over bars to see exact values")
 
         #fig3 = sns.catplot(x='label', kind='count',height=5, aspect=3, data=ndf)#,points='all')
@@ -322,27 +66,6 @@ if ndf is not None:
         
         # TODO Warning if imbalanced
         # Darstellung der Label Verteilung: Bar Chart mit 110pixel*len(labels), Knackpunkt: 9 Daten-Kolumnen
-
-# ---------------------------------------------- Sidebar ---------------------------------------------------
-    
-    st.sidebar.header('Configuration')
-
-    # Language
-    option02 = st.sidebar.selectbox(
-        'Which language?',
-        ['German','English'])
-
-    # Numerical Data?
-    label_type = st.sidebar.radio(
-        "Label type?",
-        ('Categorical', 'Numeric - discrete', 'Numeric continuous'), index = label_type_idx)
-        # categorical: String, dicrete: int, continuous: float
-
-    #Algorithm?
-    algorithm = st.sidebar.radio(
-        "Algorithm?",
-        ('SVM', 'Regression', 'Decision Tree', 'Random Forest'))
-# ------------------------------------------------------------------------------------------------------
 
     with data_stats:
         # Ratio
@@ -370,16 +93,16 @@ if ndf is not None:
             st.write("\n")
             with c1:
                 st.write("Original data")
-                ndf.index = ndf.index +1
-                st.dataframe(ndf['text'])
+                df.index = df.index +1
+                st.dataframe(df[col_text])
             # average no tokens
             #av_df['test'] = ndf['text'].apply(lambda x: "Hallo."+ str(x))    # debug Test
-            av_df['#chars/entry'] = ndf['text'].apply(lambda x: len(''.join(str(x).split())))
-            av_df['#words/entry'] = ndf['text'].apply(lambda x: len(str(x).split()))
+            av_df['#chars/entry'] = df[col_text].apply(lambda x: len(''.join(str(x).split())))
+            av_df['#words/entry'] = df[col_text].apply(lambda x: len(str(x).split()))
             #av_df['#sentences/entry'] = ndf['text'].apply(lambda x: len(str(x).split('.')))
-            av_df['#chars/sentence'] = ndf['text'].apply(lambda x: len(''.join(str(x).split()))/len(str(x).split('.')))
-            av_df['#words/sentence'] = ndf['text'].apply(lambda x: len(str(x).split())/len(str(x).split('.')))
-            av_df['label'] = ndf['label']
+            av_df['#chars/sentence'] = df[col_text].apply(lambda x: len(''.join(str(x).split()))/len(str(x).split('.')))
+            av_df['#words/sentence'] = df[col_text].apply(lambda x: len(str(x).split())/len(str(x).split('.')))
+            av_df['label'] = df[col_label]
             #av_df['#chars/word'] = ndf['text'].apply(lambda x: len(''.join(str(x).split()))/len(str(x).split()))
             
             # vocabulary = set(text.split())
@@ -388,7 +111,7 @@ if ndf is not None:
                 st.write("Average stats: counts + lengths")
                 st.write(av_df)
         if label_type == 'Numeric - discrete' or label_type == 'Numeric continuous':
-            sorted_av_df = av_df.sort_values(by='label')
+            sorted_av_df = av_df.sort_values(by=col_label)
         else:
             sorted_av_df = av_df
 
@@ -470,7 +193,7 @@ if ndf is not None:
 
         st.header("Most frequent word n-grams")
         text_content = ""
-        for entry in ndf['text']:
+        for entry in df[col_text]:
             text_content+= " "+ entry
         #text_content = text_content.replace("."," .") 
         # #TODO dealing with the full stops, punctuation, special characters..
@@ -486,7 +209,7 @@ if ndf is not None:
         n_gram_start = 1
         n_gram_stop = 3
 
-        some_more_data = most_freq_ngrams_CountVec(ndf, labels, N, n_gram_start, n_gram_stop)
+#        some_more_data = most_freq_ngrams_CountVec(df, labels, col_text, col_label, N, n_gram_start, n_gram_stop)
 
         # Type-Token Ratio
         st.subheader("Type-Token-Ratio")
@@ -494,8 +217,8 @@ if ndf is not None:
         c5, c6, c7, c_space = st.columns((1,1,1,2))
 
         ttr_df = pd.DataFrame()
-        ttr_df['TTR'] = ndf['text'].apply(lambda x: len(set(str(x).split()))/len(str(x).split()))
-        ttr_df['label'] = ndf['label']
+        ttr_df['TTR'] = df[col_text].apply(lambda x: len(set(str(x).split()))/len(str(x).split()))
+        ttr_df['label'] = df[col_label]
         ttr_group_mean = ttr_df.groupby('label').mean()
         ttr_group_mean = ttr_group_mean.rename(columns={'TTR':"average TTR"})
         with c5:
@@ -515,6 +238,97 @@ if ndf is not None:
         #st.line_chart(ttr_df['TTR'])
         #st.bar_chart(ttr_df['TTR'])
 
+def infer_label_type():
+    # TODO
+    return 0
+
+st.set_page_config("Scoring Dashboard", None, "wide", "auto")
+body, stats = st.columns((4, 1))
+
+data_stats = st.container()
+machine_learning = st.container()
+ml_stats = st.container()
+
+body.write(
+"""
+# Free-text Scoring Dashboard
+
+Analyze how well your free-text data can be automatically scored
+"""
+)
+
+df = None
+with st.sidebar:
+    st.header('Data Upload')
+    uploaded_file = st.file_uploader("Upload dataset (csv/tsv format)")  
+if uploaded_file:      
+    df = pd.read_csv(uploaded_file, encoding = "utf-8")
+
+    st.subheader("Preview of your data")
+    # TODO why that?
+    df.index = df.index + 1
+    st.write(df.head())
+
+    with st.sidebar.expander("Column selection", expanded=True):
+
+        st.markdown("#### Confirm the preselections \n **or** select the corresponding columns: ")
+
+        column_names = df.columns.tolist()
+        
+        with st.form('Chose Columns'):
+            col_text = st.selectbox("Select text column", column_names)
+            col_label = st.selectbox("Select label column", column_names)
+            
+            columns_selected = st.form_submit_button('Confirm')
+        
+# some pre-code for the auto-detection of column-content           
+#        for elem in first_row:
+#            try:
+#                int(df[elem][0])
+#                st.write("is Int")     
+#            except ValueError:
+#                try:
+#                    float(df[elem][0])
+#                    st.write("is float")
+#                except ValueError:
+#                    str(df[elem][0])
+#                    st.write("convertible to string")
+#            finally:
+#                st.write()
+
+# ----------------------------------------Data Analysis Part-----------------------------------------------
+    
+
+    # ndf = ndf.dropna(subset=['text']).reset_index()
+    # ndf = ndf.dropna(subset=['label']).reset_index()
+    
+    label_type = 'Categorical'
+    if columns_selected:
+        print_data_stats(label_type)
+        
+# ---------------------------------------------- Sidebar ---------------------------------------------------
+    
+    st.sidebar.header('Configuration')
+
+    # Language
+    option02 = st.sidebar.selectbox(
+        'Which language?',
+        ['German','English'])
+
+    # Numerical Data?
+    label_type = st.sidebar.radio(
+        "Label type?",
+        ('Categorical', 'Numeric - discrete', 'Numeric continuous'), index = infer_label_type())
+        # categorical: String, dicrete: int, continuous: float
+    st.write(label_type)
+
+    #Algorithm?
+    algorithm = st.sidebar.radio(
+        "Algorithm?",
+        ('SVM', 'Regression', 'Decision Tree', 'Random Forest'))
+# ------------------------------------------------------------------------------------------------------
+
+    
     # ML -------------------------------------------------------------------------------------
     st.markdown('# Machine Learning Stats')
     c1, c2 = st.columns((0.8,1))
@@ -538,7 +352,7 @@ if ndf is not None:
 
     # cv value fest an Funktion übergeben oder als variablen Input vom User?
     
-    overview_res = cross_val_test(ndf, 10)
+    overview_res = cross_val_test(df, 10, col_text, col_label)
     overview_res_ = overview_res.reset_index().rename(columns={'index': 'fold', 'score': 'score'})
     overview_res_['fold']=overview_res_['fold'].values + 1
     overview_stats = []
@@ -586,7 +400,7 @@ if ndf is not None:
     from ml import test, get_clf
     classifier = algorithm
     ml_results = {}
-    ml_results = test(get_clf(classifier), ndf, 10)
+    ml_results = test(get_clf(classifier), df, 10, col_text, col_label)
     #st.write(ml_results.keys())
     ml_res_df = pd.DataFrame()
     ml_res_df['accuracy'] = ml_results['accuracy']

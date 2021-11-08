@@ -20,7 +20,7 @@ import numpy as np
 
 # settings for multiclass problems?
 
-def cross_validate(df, k):
+def cross_validate(df, k, col_label, col_text):
     pipeline = Pipeline([
         ('vect', CountVectorizer()),
         ('tfidf', TfidfTransformer()),
@@ -32,69 +32,38 @@ def cross_validate(df, k):
     
     # need to convert to Unicode first - argh encodings ...
     #x = df['text'].values.astype('U')
-    x = df['text'].values.astype('unicode')
-    y = df['label'].astype(int).tolist()
+    x = df[col_text].values.astype('unicode')
+    y = df[col_label].astype(int).tolist()
 
     scores = cross_val_score(pipeline, x, y, cv = k, scoring='f1_micro', error_score="raise")
     return scores
 
-def cross_val_mat_SVM(df, k):
-    results = {}
-    pipeline = Pipeline([
-        ('vect', CountVectorizer()),#ngram_range=(2,3))),
-        ('tfidf', TfidfTransformer()),
-        ('clf', LinearSVC())
-    ])
-    
-    # open issue: conversion to unicode...
-    x = df['text'].values.astype('unicode')
-    y = df['label'].astype(int).tolist()
-    results['y'] = y
-    results['scores'] = cross_val_score(pipeline, x, y, cv = k, scoring='f1_micro', error_score="raise")
-    results['y_pred'] = cross_val_predict(pipeline, x, y, cv = k, verbose=1)
-    
-    return results
+    # pipeline = Pipeline([
+    #     ('vect', CountVectorizer()),#ngram_range=(2,3))),
+    #     ('tfidf', TfidfTransformer()),
+    #     ('clf', LinearSVC())
+    # ])
 
-def cross_val_dtree(df, k, list): # list as possibility to include stopwords
-    results = {}
-    pipeline = Pipeline([
-        ('tfidf_vec', TfidfVectorizer()), #(ngram_range=(2,3))),
-        #('selector',SelectKBest(k=50)),
-        #('tfidf_vec', TfidfVectorizer(stop_words=list,max_features=20)),
-        ('tree_clf', DecisionTreeClassifier(criterion='gini')),
-        #('tree_clf', DecisionTreeClassifier(criterion='gini', max_depth=5))
-    ])
+    # pipeline = Pipeline([
+    #     ('tfidf_vec', TfidfVectorizer()), #(ngram_range=(2,3))),
+    #     #('selector',SelectKBest(k=50)),
+    #     #('tfidf_vec', TfidfVectorizer(stop_words=list,max_features=20)),
+    #     ('tree_clf', DecisionTreeClassifier(criterion='gini')),
+    #     #('tree_clf', DecisionTreeClassifier(criterion='gini', max_depth=5))
+    # ])
 
-    x = df['text'].values.astype('unicode')
-    y = df['label'].astype(int).tolist()
-    results['y'] = y
-    results['scores'] = cross_val_score(pipeline, x, y, cv = k, scoring='f1_micro', error_score="raise")
-    results['y_pred'] = cross_val_predict(pipeline, x, y, cv = k, verbose=1)
-
-    return results
-
-def cross_val_reg(df, k):
-    results = {}
-    pipeline = Pipeline([
-        ('tfidf_vec', TfidfVectorizer()), #ngram_range=(2,3))),
-        #('selector',SelectKBest(k=50)),
-        ('reg_clf', LogisticRegression(solver='lbfgs')),
-    ])
-
-    x = df['text'].values.astype('unicode')
-    y = df['label'].astype(int).tolist()
-    results['y'] = y
-    results['scores'] = cross_val_score(pipeline, x, y, cv = k, scoring='f1_micro', error_score="raise")
-    results['y_pred'] = cross_val_predict(pipeline, x, y, cv = k, verbose=1)
-
-    return results
+    # pipeline = Pipeline([
+    #     ('tfidf_vec', TfidfVectorizer()), #ngram_range=(2,3))),
+    #     #('selector',SelectKBest(k=50)),
+    #     ('reg_clf', LogisticRegression(solver='lbfgs')),
+    # ])
 
 @st.cache
-def cross_val_test(df, k):
+def cross_val_test(df, k, col_text, col_label):
     results_dict = {}
     results_df = pd.DataFrame()
-    x = df['text'].values.astype('unicode')
-    y = df['label'].astype(int).tolist()
+    x = df[col_text].values.astype('unicode')
+    y = df[col_label].astype(int).tolist()
     classifiers = {"SVM": LinearSVC(),
                    "DecisionTree": DecisionTreeClassifier(criterion='gini'),
                    "RandomForest":RandomForestClassifier(criterion='gini'),
@@ -131,7 +100,7 @@ def get_clf(clf):
         return RandomForestClassifier(criterion='gini')
 
 @st.cache
-def test(clf, df,k):
+def test(clf, df, k, col_text, col_label):
     df.index = df.index - 1 #needed since index +1 for visualization
     container = {}
     all_y_test = []
@@ -142,8 +111,8 @@ def test(clf, df,k):
     av_recall = []
     av_fscore = []
 
-    x = pd.Series(df['text'].values.astype('unicode'))
-    y = pd.Series(df['label'].astype(int))
+    x = pd.Series(df[col_text].values.astype('unicode'))
+    y = pd.Series(df[col_label].astype(int))
 
     kfold = model_selection.KFold(n_splits=k,random_state=7,shuffle=True)
     pipeline = Pipeline([
@@ -190,11 +159,4 @@ def test(clf, df,k):
     container['y_pred'] = all_y_pred
     container['y_true'] = all_y_test
 
-    return container 
-        
-        
-
-
-
-
-
+    return container

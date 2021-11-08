@@ -7,18 +7,16 @@ import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
 
 #@st.cache(suppress_st_warning=True)
-def most_freq_ngrams_CountVec(ndf, labels, n, start, stop):
+def most_freq_ngrams_CountVec(df, labels, col_text, col_label, n, start, stop):
     
     for label in labels:
-        #st.write(label)
-        #st.write(ndf.head())
-        df_sel= ndf[ndf['label']==str(label)] #TODO cast over mappen für bessere Performance!
+        df_sel= df[df[col_label]==str(label)] #TODO cast over mappen für bessere Performance!
         if df_sel.empty:
-            df_sel= ndf[ndf['label']==label]
+            df_sel= df[df[col_label]==label]
 
         #st.write(df_sel)        
         freq_per_label = {}
-        text_content = df_sel['text'].values
+        text_content = df_sel[col_text].values
         
 
         for i in range (start, stop+1):
@@ -46,5 +44,4 @@ def most_freq_ngrams_CountVec(ndf, labels, n, start, stop):
         most_commons.index = most_commons.index +1
         st.write('Label: ', str(label),  most_commons)
         # wenn @cache muss das st.write ausgelagert werden..
-    return freq_per_label   
-    
+    return freq_per_label
